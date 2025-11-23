@@ -1,0 +1,4 @@
+bronze_table: "payments_bronze"
+silver_table: "payments_silver"
+checkpoint_base_path: "/mnt/checkpoints/real_time_payments"
+high_value_threshold: 2000.0

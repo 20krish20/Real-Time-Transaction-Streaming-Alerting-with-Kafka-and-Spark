@@ -1,0 +1,7 @@
+sfURL: "xxxxxx.snowflakecomputing.com"
+sfUser: "YOUR_USER"
+sfPassword: "YOUR_PASSWORD"
+sfDatabase: "PAYMENTS_DB"
+sfSchema: "PUBLIC"
+sfWarehouse: "PAYMENTS_WH"
+sfRole: "PAYMENTS_ROLE"

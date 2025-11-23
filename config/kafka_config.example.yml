@@ -1,0 +1,12 @@
+bootstrap_servers: "pkc-921jm.us-east-2.aws.confluent.cloud:9092"
+
+topic: "payments.raw"
+
+# Confluent Cloud security
+security_protocol: "SASL_SSL"
+sasl_mechanism: "PLAIN"
+sasl_username: "YOUR_API_KEY"
+sasl_password: "YOUR_API_SECRET"
+
+linger_ms: 10
+acks: "all"
