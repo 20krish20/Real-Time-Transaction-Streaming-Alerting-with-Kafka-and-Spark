@@ -1,0 +1,56 @@
+name: Deploy — Databricks Asset Bundle
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Deployment target"
+        required: true
+        default: "staging"
+        type: choice
+        options: [staging, production]
+
+jobs:
+  deploy:
+    name: Deploy to Databricks (${{ github.event.inputs.target || 'staging' }})
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.target || 'staging' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+          cache: "pip"
+
+      - name: Build wheel
+        run: pip install build && python -m build --wheel
+
+      - name: Install Databricks CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+
+      - name: Configure Databricks CLI
+        run: |
+          databricks configure --token \
+            --host "${{ secrets.DATABRICKS_HOST }}" \
+            --token "${{ secrets.DATABRICKS_TOKEN }}"
+
+      - name: Validate bundle
+        run: databricks bundle validate
+
+      - name: Deploy bundle
+        run: |
+          TARGET="${{ github.event.inputs.target || 'staging' }}"
+          databricks bundle deploy --target "$TARGET"
+
+      - name: Run Bronze smoke test
+        if: github.event.inputs.target != 'production'
+        run: |
+          databricks bundle run bronze_ingestion_job \
+            --target staging \
+            --no-wait \
+            || true   # non-blocking; streaming job runs indefinitely

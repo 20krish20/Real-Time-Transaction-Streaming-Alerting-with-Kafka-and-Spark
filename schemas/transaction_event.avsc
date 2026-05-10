@@ -1,0 +1,107 @@
+{
+  "type": "record",
+  "name": "TransactionEvent",
+  "namespace": "com.merchant.reconciliation",
+  "doc": "Card transaction event emitted by payment network gateway",
+  "fields": [
+    {
+      "name": "transaction_id",
+      "type": "string",
+      "doc": "UUID-based globally unique transaction identifier"
+    },
+    {
+      "name": "merchant_id",
+      "type": "string",
+      "doc": "Acquiring merchant identifier"
+    },
+    {
+      "name": "card_id",
+      "type": "string",
+      "doc": "Tokenised card identifier (PCI-compliant, never raw PAN)"
+    },
+    {
+      "name": "customer_id",
+      "type": "string",
+      "doc": "Internal customer reference"
+    },
+    {
+      "name": "amount",
+      "type": "double",
+      "doc": "Transaction amount in the specified currency"
+    },
+    {
+      "name": "currency",
+      "type": "string",
+      "default": "USD",
+      "doc": "ISO 4217 currency code"
+    },
+    {
+      "name": "country",
+      "type": "string",
+      "doc": "ISO 3166-1 alpha-2 country code of the transaction"
+    },
+    {
+      "name": "channel",
+      "type": {
+        "type": "enum",
+        "name": "Channel",
+        "symbols": ["POS", "ONLINE", "ATM", "CONTACTLESS", "MOBILE"]
+      },
+      "doc": "Payment channel"
+    },
+    {
+      "name": "card_type",
+      "type": {
+        "type": "enum",
+        "name": "CardType",
+        "symbols": ["VISA", "MASTERCARD", "AMEX", "DISCOVER", "UNIONPAY"]
+      },
+      "doc": "Card network"
+    },
+    {
+      "name": "event_time",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      },
+      "doc": "Event time as epoch milliseconds (authoritative event-time clock)"
+    },
+    {
+      "name": "processing_time",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      },
+      "doc": "Time the producer wrote to Kafka (wall clock)"
+    },
+    {
+      "name": "correlation_id",
+      "type": "string",
+      "doc": "Distributed tracing ID — flows through every pipeline layer"
+    },
+    {
+      "name": "geo_lat",
+      "type": ["null", "double"],
+      "default": null,
+      "doc": "Terminal GPS latitude (null for ONLINE/ATM)"
+    },
+    {
+      "name": "geo_lon",
+      "type": ["null", "double"],
+      "default": null,
+      "doc": "Terminal GPS longitude (null for ONLINE/ATM)"
+    },
+    {
+      "name": "mcc",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Merchant Category Code (ISO 18245)"
+    },
+    {
+      "name": "schema_version",
+      "type": "int",
+      "default": 1,
+      "doc": "Avro schema version — used to detect incompatible evolution"
+    }
+  ]
+}

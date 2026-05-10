@@ -1,0 +1,184 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────
+# Merchant Reconciliation Platform — Local Development Stack
+#
+# Services:
+#   zookeeper        – ZooKeeper quorum (Kafka dependency)
+#   broker           – Single Kafka broker (KRaft-ready, SASL_PLAINTEXT)
+#   schema-registry  – Confluent Schema Registry (Avro)
+#   kafka-ui         – Provectus Kafka UI (browser: http://localhost:8080)
+#   kafka-init       – One-shot container that creates topics on startup
+# ─────────────────────────────────────────────────────────────
+
+networks:
+  reconciliation-net:
+    driver: bridge
+
+volumes:
+  zk-data:
+  zk-logs:
+  broker-data:
+
+services:
+  # ── ZooKeeper ──────────────────────────────────────────────
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    hostname: zookeeper
+    container_name: reconciliation-zookeeper
+    networks: [reconciliation-net]
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_SYNC_LIMIT: 2
+    volumes:
+      - zk-data:/var/lib/zookeeper/data
+      - zk-logs:/var/lib/zookeeper/log
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo ruok | nc localhost 2181 | grep imok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Kafka Broker ───────────────────────────────────────────
+  broker:
+    image: confluentinc/cp-kafka:7.6.0
+    hostname: broker
+    container_name: reconciliation-broker
+    networks: [reconciliation-net]
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"      # host-accessible (PLAINTEXT)
+      - "29092:29092"    # internal Docker network
+      - "9101:9101"      # JMX
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
+
+      # Listeners: PLAINTEXT for host access, INTERNAL for container-to-container
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://localhost:9092,INTERNAL://broker:29092"
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+
+      # Retention & performance tuning
+      KAFKA_LOG_RETENTION_HOURS: 168          # 7 days
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824     # 1 GB
+      KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS: 300000
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"  # explicit topic creation only
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_NUM_PARTITIONS: 6
+
+      # Exactly-once semantics support
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+      # JMX for monitoring
+      KAFKA_JMX_PORT: 9101
+      KAFKA_JMX_HOSTNAME: localhost
+
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    volumes:
+      - broker-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # ── Schema Registry ────────────────────────────────────────
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.6.0
+    hostname: schema-registry
+    container_name: reconciliation-schema-registry
+    networks: [reconciliation-net]
+    depends_on:
+      broker:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: "broker:29092"
+      SCHEMA_REGISTRY_LISTENERS: "http://0.0.0.0:8081"
+      SCHEMA_REGISTRY_KAFKASTORE_TOPIC: "_schemas"
+      SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY_LEVEL: "BACKWARD"  # safe evolution default
+      SCHEMA_REGISTRY_DEBUG: "false"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/subjects"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── Kafka UI ───────────────────────────────────────────────
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: reconciliation-kafka-ui
+    networks: [reconciliation-net]
+    depends_on:
+      broker:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local-reconciliation
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "broker:29092"
+      KAFKA_CLUSTERS_0_SCHEMAREGISTRY: "http://schema-registry:8081"
+      KAFKA_CLUSTERS_0_METRICS_PORT: 9101
+      DYNAMIC_CONFIG_ENABLED: "true"
+
+  # ── Topic Initialisation (one-shot) ───────────────────────
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: reconciliation-kafka-init
+    networks: [reconciliation-net]
+    depends_on:
+      broker:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command: |
+      "
+      echo 'Waiting for Kafka to be ready...'
+      cub kafka-ready -b broker:29092 1 30
+
+      echo 'Creating topics...'
+
+      # raw-transactions: high throughput, 6 partitions, 7-day retention
+      kafka-topics --bootstrap-server broker:29092 --create --if-not-exists \
+        --topic raw-transactions \
+        --partitions 6 \
+        --replication-factor 1 \
+        --config retention.ms=604800000 \
+        --config min.insync.replicas=1
+
+      # settlement-expectations: lower throughput, 3 partitions, 30-day retention
+      kafka-topics --bootstrap-server broker:29092 --create --if-not-exists \
+        --topic settlement-expectations \
+        --partitions 3 \
+        --replication-factor 1 \
+        --config retention.ms=2592000000
+
+      # reconciliation-alerts: anomaly dead letter queue
+      kafka-topics --bootstrap-server broker:29092 --create --if-not-exists \
+        --topic reconciliation-alerts \
+        --partitions 3 \
+        --replication-factor 1 \
+        --config retention.ms=2592000000
+
+      # dlq-transactions: malformed / permanently unprocessable messages
+      kafka-topics --bootstrap-server broker:29092 --create --if-not-exists \
+        --topic dlq-transactions \
+        --partitions 3 \
+        --replication-factor 1 \
+        --config retention.ms=2592000000
+
+      echo 'Topics created successfully.'
+      kafka-topics --bootstrap-server broker:29092 --list
+      "
+    restart: "no"
