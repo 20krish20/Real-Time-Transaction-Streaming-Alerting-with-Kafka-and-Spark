@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment / secrets — NEVER commit these
+.env
+*.env
+config/kafka_config.yml
+config/snowflake_config.yml
+config/streaming_job_config.yml
+
+# Test & coverage artefacts
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.log
+
+# Spark local mode / Delta Lake test data
+/tmp/merchant-reconciliation/
+spark-warehouse/
+derby.log
+metastore_db/
+
+# Databricks CLI
+.databricks/
+databricks.yml.local
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Great Expectations
+great_expectations/uncommitted/

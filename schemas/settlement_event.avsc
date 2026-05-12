@@ -1,0 +1,94 @@
+{
+  "type": "record",
+  "name": "SettlementEvent",
+  "namespace": "com.merchant.reconciliation",
+  "doc": "Expected settlement record from the acquiring bank / payment processor",
+  "fields": [
+    {
+      "name": "settlement_id",
+      "type": "string",
+      "doc": "Bank-assigned unique settlement reference"
+    },
+    {
+      "name": "transaction_id",
+      "type": "string",
+      "doc": "Matching transaction_id from TransactionEvent — join key"
+    },
+    {
+      "name": "merchant_id",
+      "type": "string",
+      "doc": "Acquiring merchant identifier — composite join key with transaction_id"
+    },
+    {
+      "name": "expected_amount",
+      "type": "double",
+      "doc": "Amount the bank expects to settle in the specified currency"
+    },
+    {
+      "name": "currency",
+      "type": "string",
+      "default": "USD"
+    },
+    {
+      "name": "settlement_status",
+      "type": {
+        "type": "enum",
+        "name": "SettlementStatus",
+        "symbols": ["PENDING", "APPROVED", "REJECTED", "REVERSED", "DISPUTED"]
+      },
+      "doc": "Current settlement lifecycle state"
+    },
+    {
+      "name": "settlement_date",
+      "type": {
+        "type": "int",
+        "logicalType": "date"
+      },
+      "doc": "Scheduled settlement date (epoch days)"
+    },
+    {
+      "name": "event_time",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      },
+      "doc": "Time the settlement record was created by the bank system"
+    },
+    {
+      "name": "processing_time",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      },
+      "doc": "Time the producer wrote to Kafka"
+    },
+    {
+      "name": "correlation_id",
+      "type": "string",
+      "doc": "Must match the correlation_id from the originating TransactionEvent"
+    },
+    {
+      "name": "bank_reference",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Optional bank-internal reference number"
+    },
+    {
+      "name": "interchange_fee",
+      "type": ["null", "double"],
+      "default": null,
+      "doc": "Interchange fee deducted by the network"
+    },
+    {
+      "name": "net_settlement_amount",
+      "type": ["null", "double"],
+      "default": null,
+      "doc": "expected_amount minus interchange_fee"
+    },
+    {
+      "name": "schema_version",
+      "type": "int",
+      "default": 1
+    }
+  ]
+}

@@ -1,0 +1,228 @@
+# ============================================================
+# Databricks Asset Bundle — Merchant Reconciliation Platform
+#
+# Deploy with:
+#   databricks bundle deploy --target staging
+#   databricks bundle deploy --target production
+#
+# Run pipeline:
+#   databricks bundle run --target production bronze_ingestion_job
+# ============================================================
+
+bundle:
+  name: merchant-reconciliation-platform
+
+variables:
+  # Override per target below
+  catalog:
+    description: "Unity Catalog catalog name"
+    default: "reconciliation_dev"
+  cluster_policy_id:
+    description: "Cluster policy ID for job clusters"
+    default: ""
+  node_type:
+    description: "Worker node type"
+    default: "m5d.xlarge"
+
+# ── Shared cluster configuration ──────────────────────────────────────────────
+artifacts:
+  reconciliation_whl:
+    type: whl
+    build: "pip wheel . -w dist/"
+    files:
+      - source: dist/*.whl
+
+resources:
+  # ── Job: Bronze Ingestion ──────────────────────────────────────────────────
+  jobs:
+    bronze_ingestion_job:
+      name: "[Reconciliation] Bronze — Kafka → Delta"
+      tags:
+        team: "data-platform"
+        layer: "bronze"
+        environment: "${bundle.target}"
+
+      continuous:
+        pause_status: UNPAUSED       # Continuous streaming job
+
+      job_clusters:
+        - job_cluster_key: bronze_cluster
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "${var.node_type}"
+            num_workers: 2
+            policy_id: "${var.cluster_policy_id}"
+            spark_conf:
+              spark.sql.extensions: "io.delta.sql.DeltaSparkSessionExtension"
+              spark.sql.catalog.spark_catalog: "org.apache.spark.sql.delta.catalog.DeltaCatalog"
+              spark.databricks.delta.optimizeWrite.enabled: "true"
+              spark.databricks.delta.autoCompact.enabled: "true"
+              spark.streaming.stopGracefullyOnShutdown: "true"
+            spark_env_vars:
+              KAFKA__BOOTSTRAP_SERVERS: "{{secrets/reconciliation/kafka-bootstrap-servers}}"
+              KAFKA__SASL_USERNAME: "{{secrets/reconciliation/kafka-api-key}}"
+              KAFKA__SASL_PASSWORD: "{{secrets/reconciliation/kafka-api-secret}}"
+              KAFKA__SECURITY_PROTOCOL: "SASL_SSL"
+              KAFKA__SASL_MECHANISM: "PLAIN"
+              KAFKA__SCHEMA_REGISTRY_URL: "{{secrets/reconciliation/schema-registry-url}}"
+              DELTA__BASE_PATH: "dbfs:/merchant-reconciliation/delta"
+              DELTA__CHECKPOINT_BASE: "dbfs:/merchant-reconciliation/checkpoints"
+
+      tasks:
+        - task_key: bronze_ingest
+          job_cluster_key: bronze_cluster
+          python_wheel_task:
+            package_name: merchant-reconciliation-platform
+            entry_point: bronze_ingestion
+          libraries:
+            - whl: ./dist/*.whl
+          timeout_seconds: 0
+          email_notifications:
+            on_failure:
+              - "data-platform-alerts@company.com"
+
+    # ── Job: Silver Deduplication ──────────────────────────────────────────
+    silver_dedup_job:
+      name: "[Reconciliation] Silver — Dedup & Enrich"
+      tags:
+        team: "data-platform"
+        layer: "silver"
+        environment: "${bundle.target}"
+
+      continuous:
+        pause_status: UNPAUSED
+
+      job_clusters:
+        - job_cluster_key: silver_cluster
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "${var.node_type}"
+            num_workers: 2
+            spark_conf:
+              spark.sql.extensions: "io.delta.sql.DeltaSparkSessionExtension"
+              spark.sql.catalog.spark_catalog: "org.apache.spark.sql.delta.catalog.DeltaCatalog"
+              spark.databricks.delta.optimizeWrite.enabled: "true"
+            spark_env_vars:
+              DELTA__BASE_PATH: "dbfs:/merchant-reconciliation/delta"
+              DELTA__CHECKPOINT_BASE: "dbfs:/merchant-reconciliation/checkpoints"
+
+      tasks:
+        - task_key: silver_dedup
+          job_cluster_key: silver_cluster
+          depends_on:
+            - task_key: bronze_ingest
+              job_id: bronze_ingestion_job
+          python_wheel_task:
+            package_name: merchant-reconciliation-platform
+            entry_point: silver_dedup
+          libraries:
+            - whl: ./dist/*.whl
+
+    # ── Job: Gold Reconciliation ───────────────────────────────────────────
+    gold_reconciliation_job:
+      name: "[Reconciliation] Gold — Stream Join & Anomaly Detection"
+      tags:
+        team: "data-platform"
+        layer: "gold"
+        environment: "${bundle.target}"
+
+      continuous:
+        pause_status: UNPAUSED
+
+      job_clusters:
+        - job_cluster_key: gold_cluster
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "${var.node_type}"
+            num_workers: 4              # Gold needs more workers for stateful join
+            spark_conf:
+              spark.sql.extensions: "io.delta.sql.DeltaSparkSessionExtension"
+              spark.sql.catalog.spark_catalog: "org.apache.spark.sql.delta.catalog.DeltaCatalog"
+              spark.sql.shuffle.partitions: "200"
+              # State store: RocksDB for better memory management than HDFS-backed
+              spark.sql.streaming.stateStore.providerClass: >-
+                org.apache.spark.sql.execution.streaming.state.RocksDBStateStoreProvider
+            spark_env_vars:
+              KAFKA__BOOTSTRAP_SERVERS: "{{secrets/reconciliation/kafka-bootstrap-servers}}"
+              KAFKA__SASL_USERNAME: "{{secrets/reconciliation/kafka-api-key}}"
+              KAFKA__SASL_PASSWORD: "{{secrets/reconciliation/kafka-api-secret}}"
+              KAFKA__SECURITY_PROTOCOL: "SASL_SSL"
+              KAFKA__SASL_MECHANISM: "PLAIN"
+              DELTA__BASE_PATH: "dbfs:/merchant-reconciliation/delta"
+              DELTA__CHECKPOINT_BASE: "dbfs:/merchant-reconciliation/checkpoints"
+              STREAMING__TRANSACTION_WATERMARK_MINUTES: "10"
+              STREAMING__SETTLEMENT_WATERMARK_MINUTES: "30"
+              STREAMING__AMOUNT_MISMATCH_TOLERANCE_PCT: "0.01"
+
+      tasks:
+        - task_key: gold_reconcile
+          job_cluster_key: gold_cluster
+          python_wheel_task:
+            package_name: merchant-reconciliation-platform
+            entry_point: gold_reconciliation
+          libraries:
+            - whl: ./dist/*.whl
+          email_notifications:
+            on_failure:
+              - "data-platform-alerts@company.com"
+
+    # ── Job: Snowflake Writer ──────────────────────────────────────────────
+    snowflake_writer_job:
+      name: "[Reconciliation] Snowflake — Gold → Snowflake"
+      tags:
+        team: "data-platform"
+        layer: "serving"
+        environment: "${bundle.target}"
+
+      schedule:
+        quartz_cron_expression: "0 */5 * * * ?"  # every 5 minutes
+        timezone_id: "UTC"
+        pause_status: UNPAUSED
+
+      job_clusters:
+        - job_cluster_key: sf_writer_cluster
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "${var.node_type}"
+            num_workers: 2
+            spark_conf:
+              spark.sql.extensions: "io.delta.sql.DeltaSparkSessionExtension"
+              spark.sql.catalog.spark_catalog: "org.apache.spark.sql.delta.catalog.DeltaCatalog"
+            spark_env_vars:
+              SNOWFLAKE__ACCOUNT: "{{secrets/reconciliation/snowflake-account}}"
+              SNOWFLAKE__USER: "{{secrets/reconciliation/snowflake-user}}"
+              SNOWFLAKE__PASSWORD: "{{secrets/reconciliation/snowflake-password}}"
+              DELTA__BASE_PATH: "dbfs:/merchant-reconciliation/delta"
+              DELTA__CHECKPOINT_BASE: "dbfs:/merchant-reconciliation/checkpoints"
+
+      tasks:
+        - task_key: sf_write
+          job_cluster_key: sf_writer_cluster
+          python_wheel_task:
+            package_name: merchant-reconciliation-platform
+            entry_point: snowflake_writer
+          libraries:
+            - whl: ./dist/*.whl
+            - maven:
+                coordinates: net.snowflake:spark-snowflake_2.12:2.16.0-spark_3.4
+
+# ── Deployment targets ────────────────────────────────────────────────────────
+targets:
+  staging:
+    mode: development
+    default: true
+    workspace:
+      host: "https://${var.databricks_host}"
+    variables:
+      catalog: "reconciliation_staging"
+      node_type: "m5d.large"
+
+  production:
+    mode: production
+    workspace:
+      host: "https://${var.databricks_host}"
+    variables:
+      catalog: "reconciliation_prod"
+      node_type: "m5d.xlarge"
+    run_as:
+      service_principal_name: "reconciliation-platform-sp"

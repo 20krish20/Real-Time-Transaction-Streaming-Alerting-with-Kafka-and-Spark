@@ -1,0 +1,44 @@
+name: Integration Tests (Docker)
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:     # manual trigger for on-demand runs
+
+jobs:
+  integration-tests:
+    name: Integration Tests — Kafka + testcontainers
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+          cache: "pip"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Install dependencies (including testcontainers)
+        run: pip install -e ".[dev]"
+
+      - name: Run integration tests
+        run: |
+          pytest tests/integration/ \
+            -m integration \
+            --timeout=120 \
+            -v \
+            --tb=short
+
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-logs
+          path: /tmp/pytest-*.log
+          retention-days: 7

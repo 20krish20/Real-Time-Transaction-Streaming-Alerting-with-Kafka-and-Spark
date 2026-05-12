@@ -2,12 +2,11 @@ import json
 import random
 import time
 from datetime import datetime, timezone
-from uuid import uuid4
 from pathlib import Path
+from uuid import uuid4
 
 import yaml
 from confluent_kafka import Producer
-
 
 CARDS = [f"card_{i}" for i in range(1, 501)]
 CUSTOMERS = [f"cust_{i}" for i in range(1, 301)]
@@ -23,7 +22,7 @@ def load_config(path: str = "config/kafka_config.yml") -> dict:
             f"Kafka config not found at {config_path}. "
             f"Copy config/kafka_config.example.yml and update."
         )
-    with open(config_path, "r") as f:
+    with open(config_path) as f:
         return yaml.safe_load(f)
 
 
@@ -37,7 +36,6 @@ def create_producer(conf: dict) -> Producer:
         "client.id": "payments-producer",
         "linger.ms": conf.get("linger_ms", 10),
         "acks": conf.get("acks", "all"),
-
         # Confluent Cloud security (correct for confluent-kafka)
         "security.protocol": conf.get("security_protocol", "SASL_SSL"),
         "sasl.mechanisms": conf.get("sasl_mechanism", "PLAIN"),
