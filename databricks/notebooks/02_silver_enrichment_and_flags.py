@@ -1,9 +1,7 @@
 # Databricks notebook
 
-from pyspark.sql.functions import (
-    col, to_timestamp, to_date, hour,
-    when, current_timestamp
-)
+from pyspark.sql.functions import col, current_timestamp, hour, to_date, to_timestamp
+
 from databricks.utils.logging_utils import get_logger
 
 logger = get_logger("silver_enrichment")
@@ -24,35 +22,34 @@ dim_card = spark.createDataFrame(
         ("card_1", "cust_1", "US", "LOW"),
         ("card_2", "cust_2", "US", "MEDIUM"),
     ],
-    ["card_id", "customer_id_dim", "home_country", "risk_tier"]
+    ["card_id", "customer_id_dim", "home_country", "risk_tier"],
 )
 
 bronze_stream = spark.readStream.table(bronze_table)
 
 base = (
-    bronze_stream
-    .withColumn("event_time_ts", to_timestamp("event_time"))
+    bronze_stream.withColumn("event_time_ts", to_timestamp("event_time"))
     .withColumn("txn_date", to_date("event_time_ts"))
     .withColumn("txn_hour", hour("event_time_ts"))
 )
 
 enriched = (
     base.join(dim_card, on="card_id", how="left")
-        .withColumn("is_high_value", col("amount") > high_value_threshold)
-        .withColumn(
-            "is_international",
-            (col("country").isNotNull()) & (col("home_country").isNotNull()) &
-            (col("country") != col("home_country"))
-        )
-        .withColumn("processed_at", current_timestamp())
+    .withColumn("is_high_value", col("amount") > high_value_threshold)
+    .withColumn(
+        "is_international",
+        (col("country").isNotNull())
+        & (col("home_country").isNotNull())
+        & (col("country") != col("home_country")),
+    )
+    .withColumn("processed_at", current_timestamp())
 )
 
 query = (
-    enriched.writeStream
-            .format("delta")
-            .option("checkpointLocation", checkpoint_path)
-            .outputMode("append")
-            .table(silver_table)
+    enriched.writeStream.format("delta")
+    .option("checkpointLocation", checkpoint_path)
+    .outputMode("append")
+    .table(silver_table)
 )
 
 logger.info(f"Streaming query started. Writing to table {silver_table}")

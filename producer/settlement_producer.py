@@ -19,7 +19,7 @@ from __future__ import annotations
 import random
 import time
 import uuid
-from datetime import datetime, date, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -34,11 +34,11 @@ from pipeline.config import settings
 log = structlog.get_logger(__name__)
 
 # ── Chaos configuration ───────────────────────────────────────────────────────
-MISMATCH_RATE = 0.02        # 2 %  — amount differs by up to 0.5 %
-MISSING_RATE = 0.005        # 0.5% — transaction gets no settlement
-DUPLICATE_RATE = 0.001      # 0.1% — settlement sent twice
-DELAY_MIN_SECONDS = 300     # 5 minutes
-DELAY_MAX_SECONDS = 900     # 15 minutes
+MISMATCH_RATE = 0.02  # 2 %  — amount differs by up to 0.5 %
+MISSING_RATE = 0.005  # 0.5% — transaction gets no settlement
+DUPLICATE_RATE = 0.001  # 0.1% — settlement sent twice
+DELAY_MIN_SECONDS = 300  # 5 minutes
+DELAY_MAX_SECONDS = 900  # 15 minutes
 
 SETTLEMENT_STATUSES = ["APPROVED", "PENDING", "REJECTED", "REVERSED", "DISPUTED"]
 STATUS_WEIGHTS = [0.88, 0.06, 0.03, 0.02, 0.01]

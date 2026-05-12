@@ -42,17 +42,19 @@ ARCHITECTURAL DECISIONS (documented for interviews):
 
 from __future__ import annotations
 
-import json
 from enum import Enum
 
 import structlog
 from delta.tables import DeltaTable
-from pyspark.sql import SparkSession, DataFrame
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import (
-    StructType, StructField,
-    StringType, DoubleType, LongType, IntegerType,
-    TimestampType,
+    DoubleType,
+    IntegerType,
+    LongType,
+    StringType,
+    StructField,
+    StructType,
 )
 
 from pipeline.config import settings
@@ -69,44 +71,49 @@ class AnomalySeverity(str, Enum):
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
-TRANSACTION_SCHEMA = StructType([
-    StructField("transaction_id",  StringType(),  False),
-    StructField("merchant_id",     StringType(),  False),
-    StructField("card_id",         StringType(),  True),
-    StructField("customer_id",     StringType(),  True),
-    StructField("amount",          DoubleType(),  False),
-    StructField("currency",        StringType(),  True),
-    StructField("country",         StringType(),  True),
-    StructField("channel",         StringType(),  True),
-    StructField("card_type",       StringType(),  True),
-    StructField("event_time",      LongType(),    False),
-    StructField("processing_time", LongType(),    True),
-    StructField("correlation_id",  StringType(),  True),
-    StructField("geo_lat",         DoubleType(),  True),
-    StructField("geo_lon",         DoubleType(),  True),
-    StructField("mcc",             StringType(),  True),
-    StructField("schema_version",  IntegerType(), True),
-])
+TRANSACTION_SCHEMA = StructType(
+    [
+        StructField("transaction_id", StringType(), False),
+        StructField("merchant_id", StringType(), False),
+        StructField("card_id", StringType(), True),
+        StructField("customer_id", StringType(), True),
+        StructField("amount", DoubleType(), False),
+        StructField("currency", StringType(), True),
+        StructField("country", StringType(), True),
+        StructField("channel", StringType(), True),
+        StructField("card_type", StringType(), True),
+        StructField("event_time", LongType(), False),
+        StructField("processing_time", LongType(), True),
+        StructField("correlation_id", StringType(), True),
+        StructField("geo_lat", DoubleType(), True),
+        StructField("geo_lon", DoubleType(), True),
+        StructField("mcc", StringType(), True),
+        StructField("schema_version", IntegerType(), True),
+    ]
+)
 
-SETTLEMENT_SCHEMA = StructType([
-    StructField("settlement_id",        StringType(),  False),
-    StructField("transaction_id",       StringType(),  False),
-    StructField("merchant_id",          StringType(),  False),
-    StructField("expected_amount",      DoubleType(),  False),
-    StructField("currency",             StringType(),  True),
-    StructField("settlement_status",    StringType(),  True),
-    StructField("settlement_date",      IntegerType(), True),
-    StructField("event_time",           LongType(),    False),
-    StructField("processing_time",      LongType(),    True),
-    StructField("correlation_id",       StringType(),  True),
-    StructField("bank_reference",       StringType(),  True),
-    StructField("interchange_fee",      DoubleType(),  True),
-    StructField("net_settlement_amount", DoubleType(), True),
-    StructField("schema_version",       IntegerType(), True),
-])
+SETTLEMENT_SCHEMA = StructType(
+    [
+        StructField("settlement_id", StringType(), False),
+        StructField("transaction_id", StringType(), False),
+        StructField("merchant_id", StringType(), False),
+        StructField("expected_amount", DoubleType(), False),
+        StructField("currency", StringType(), True),
+        StructField("settlement_status", StringType(), True),
+        StructField("settlement_date", IntegerType(), True),
+        StructField("event_time", LongType(), False),
+        StructField("processing_time", LongType(), True),
+        StructField("correlation_id", StringType(), True),
+        StructField("bank_reference", StringType(), True),
+        StructField("interchange_fee", DoubleType(), True),
+        StructField("net_settlement_amount", DoubleType(), True),
+        StructField("schema_version", IntegerType(), True),
+    ]
+)
 
 
 # ── Kafka stream readers ──────────────────────────────────────────────────────
+
 
 def _kafka_base_opts() -> dict[str, str]:
     cfg = settings.kafka
@@ -133,7 +140,9 @@ def _read_transactions(spark: SparkSession) -> DataFrame:
         raw.select(F.from_json(F.col("value").cast("string"), TRANSACTION_SCHEMA).alias("d"))
         .select("d.*")
         .withColumn("txn_event_ts", F.to_timestamp(F.col("event_time") / 1000))
-        .withWatermark("txn_event_ts", f"{settings.streaming.transaction_watermark_minutes} minutes")
+        .withWatermark(
+            "txn_event_ts", f"{settings.streaming.transaction_watermark_minutes} minutes"
+        )
     )
 
 
@@ -156,6 +165,7 @@ def _read_settlements(spark: SparkSession) -> DataFrame:
 
 # ── Stream-to-stream join ─────────────────────────────────────────────────────
 
+
 def _join_streams(txn_df: DataFrame, settle_df: DataFrame) -> DataFrame:
     """
     Inner join on (transaction_id, merchant_id) with time-bounded condition.
@@ -167,50 +177,53 @@ def _join_streams(txn_df: DataFrame, settle_df: DataFrame) -> DataFrame:
     Join condition:
         Keys match AND settlement arrives within 30 min of transaction
     """
-    txn_window_minutes = settings.streaming.transaction_watermark_minutes
     settle_window_minutes = settings.streaming.settlement_watermark_minutes
 
-    return txn_df.alias("txn").join(
-        settle_df.alias("settle"),
-        on=[
-            F.col("txn.transaction_id") == F.col("settle.transaction_id"),
-            F.col("txn.merchant_id") == F.col("settle.merchant_id"),
-            # Time-range predicate keeps state store bounded
-            F.col("settle.settle_event_ts").between(
-                F.col("txn.txn_event_ts"),
-                F.col("txn.txn_event_ts") + F.expr(f"INTERVAL {settle_window_minutes} MINUTES"),
-            ),
-        ],
-        how="inner",
-    ).select(
-        # Transaction fields
-        F.col("txn.transaction_id"),
-        F.col("txn.merchant_id"),
-        F.col("txn.card_id"),
-        F.col("txn.customer_id"),
-        F.col("txn.amount").alias("transaction_amount"),
-        F.col("txn.currency").alias("transaction_currency"),
-        F.col("txn.country"),
-        F.col("txn.channel"),
-        F.col("txn.card_type"),
-        F.col("txn.txn_event_ts"),
-        F.col("txn.correlation_id"),
-        F.col("txn.mcc"),
-        F.col("txn.geo_lat"),
-        F.col("txn.geo_lon"),
-
-        # Settlement fields
-        F.col("settle.settlement_id"),
-        F.col("settle.expected_amount").alias("settlement_amount"),
-        F.col("settle.settlement_status"),
-        F.col("settle.settle_event_ts"),
-        F.col("settle.bank_reference"),
-        F.col("settle.interchange_fee"),
-        F.col("settle.net_settlement_amount"),
+    return (
+        txn_df.alias("txn")
+        .join(
+            settle_df.alias("settle"),
+            on=[
+                F.col("txn.transaction_id") == F.col("settle.transaction_id"),
+                F.col("txn.merchant_id") == F.col("settle.merchant_id"),
+                # Time-range predicate keeps state store bounded
+                F.col("settle.settle_event_ts").between(
+                    F.col("txn.txn_event_ts"),
+                    F.col("txn.txn_event_ts") + F.expr(f"INTERVAL {settle_window_minutes} MINUTES"),
+                ),
+            ],
+            how="inner",
+        )
+        .select(
+            # Transaction fields
+            F.col("txn.transaction_id"),
+            F.col("txn.merchant_id"),
+            F.col("txn.card_id"),
+            F.col("txn.customer_id"),
+            F.col("txn.amount").alias("transaction_amount"),
+            F.col("txn.currency").alias("transaction_currency"),
+            F.col("txn.country"),
+            F.col("txn.channel"),
+            F.col("txn.card_type"),
+            F.col("txn.txn_event_ts"),
+            F.col("txn.correlation_id"),
+            F.col("txn.mcc"),
+            F.col("txn.geo_lat"),
+            F.col("txn.geo_lon"),
+            # Settlement fields
+            F.col("settle.settlement_id"),
+            F.col("settle.expected_amount").alias("settlement_amount"),
+            F.col("settle.settlement_status"),
+            F.col("settle.settle_event_ts"),
+            F.col("settle.bank_reference"),
+            F.col("settle.interchange_fee"),
+            F.col("settle.net_settlement_amount"),
+        )
     )
 
 
 # ── Reconciliation & anomaly detection ───────────────────────────────────────
+
 
 def _add_reconciliation_columns(df: DataFrame) -> DataFrame:
     """
@@ -223,55 +236,61 @@ def _add_reconciliation_columns(df: DataFrame) -> DataFrame:
       LOW       — settlement_status PENDING AND mismatch_pct < 0.01%
       NONE      — fully reconciled, within tolerance
     """
-    tolerance = settings.streaming.amount_mismatch_tolerance_pct / 100.0  # convert to fraction
-
-    df = df.withColumn(
-        "amount_delta",
-        F.abs(F.col("transaction_amount") - F.col("settlement_amount")),
-    ).withColumn(
-        "mismatch_pct",
-        F.when(
-            F.col("transaction_amount") > 0,
-            (F.abs(F.col("transaction_amount") - F.col("settlement_amount"))
-             / F.col("transaction_amount")) * 100,
-        ).otherwise(F.lit(0.0)),
-    ).withColumn(
-        "is_amount_mismatch",
-        F.col("mismatch_pct") > F.lit(settings.streaming.amount_mismatch_tolerance_pct),
-    ).withColumn(
-        "is_status_anomaly",
-        F.col("settlement_status").isin("REJECTED", "REVERSED", "DISPUTED"),
-    ).withColumn(
-        "anomaly_severity",
-        F.when(
-            (F.col("mismatch_pct") > 5.0)
-            | (F.col("settlement_status").isin("REJECTED", "REVERSED")),
-            F.lit(AnomalySeverity.CRITICAL.value),
+    df = (
+        df.withColumn(
+            "amount_delta",
+            F.abs(F.col("transaction_amount") - F.col("settlement_amount")),
         )
-        .when(
-            (F.col("mismatch_pct").between(1.0, 5.0))
-            | (F.col("settlement_status") == "DISPUTED"),
-            F.lit(AnomalySeverity.HIGH.value),
+        .withColumn(
+            "mismatch_pct",
+            F.when(
+                F.col("transaction_amount") > 0,
+                (
+                    F.abs(F.col("transaction_amount") - F.col("settlement_amount"))
+                    / F.col("transaction_amount")
+                )
+                * 100,
+            ).otherwise(F.lit(0.0)),
         )
-        .when(
-            F.col("mismatch_pct").between(
-                settings.streaming.amount_mismatch_tolerance_pct, 1.0
-            ),
-            F.lit(AnomalySeverity.MEDIUM.value),
+        .withColumn(
+            "is_amount_mismatch",
+            F.col("mismatch_pct") > F.lit(settings.streaming.amount_mismatch_tolerance_pct),
         )
-        .when(
-            (F.col("settlement_status") == "PENDING")
-            & (F.col("mismatch_pct") <= settings.streaming.amount_mismatch_tolerance_pct),
-            F.lit(AnomalySeverity.LOW.value),
+        .withColumn(
+            "is_status_anomaly",
+            F.col("settlement_status").isin("REJECTED", "REVERSED", "DISPUTED"),
         )
-        .otherwise(F.lit("NONE")),
-    ).withColumn(
-        "is_anomaly",
-        F.col("anomaly_severity") != F.lit("NONE"),
-    ).withColumn(
-        "gold_reconciled_at", F.current_timestamp()
-    ).withColumn(
-        "pipeline_layer", F.lit("gold")
+        .withColumn(
+            "anomaly_severity",
+            F.when(
+                (F.col("mismatch_pct") > 5.0)
+                | (F.col("settlement_status").isin("REJECTED", "REVERSED")),
+                F.lit(AnomalySeverity.CRITICAL.value),
+            )
+            .when(
+                (F.col("mismatch_pct").between(1.0, 5.0))
+                | (F.col("settlement_status") == "DISPUTED"),
+                F.lit(AnomalySeverity.HIGH.value),
+            )
+            .when(
+                F.col("mismatch_pct").between(
+                    settings.streaming.amount_mismatch_tolerance_pct, 1.0
+                ),
+                F.lit(AnomalySeverity.MEDIUM.value),
+            )
+            .when(
+                (F.col("settlement_status") == "PENDING")
+                & (F.col("mismatch_pct") <= settings.streaming.amount_mismatch_tolerance_pct),
+                F.lit(AnomalySeverity.LOW.value),
+            )
+            .otherwise(F.lit("NONE")),
+        )
+        .withColumn(
+            "is_anomaly",
+            F.col("anomaly_severity") != F.lit("NONE"),
+        )
+        .withColumn("gold_reconciled_at", F.current_timestamp())
+        .withColumn("pipeline_layer", F.lit("gold"))
     )
 
     return df
@@ -340,7 +359,8 @@ def _upsert_gold(
     if not DeltaTable.isDeltaTable(spark, gold_path):
         log.info("gold.table.creating", path=gold_path)
         (
-            batch_df.limit(0).write.format("delta")
+            batch_df.limit(0)
+            .write.format("delta")
             .partitionBy("txn_event_ts")  # date-partition for Snowflake clustering
             .save(gold_path)
         )
@@ -392,9 +412,7 @@ def run(spark: SparkSession) -> None:
     checkpoint = f"{settings.delta.checkpoint_base}/gold_reconciliation"
 
     query = (
-        joined.writeStream.foreachBatch(
-            lambda df, bid: _process_gold_batch(spark, df, bid)
-        )
+        joined.writeStream.foreachBatch(lambda df, bid: _process_gold_batch(spark, df, bid))
         .option("checkpointLocation", checkpoint)
         .trigger(processingTime=f"{settings.streaming.gold_trigger_seconds} seconds")
         .queryName("gold-reconciliation")
@@ -408,6 +426,7 @@ def run(spark: SparkSession) -> None:
 def main() -> None:
     """Databricks python_wheel_task entry point."""
     from pipeline.observability import configure_logging, start_metrics_server
+
     configure_logging()
     start_metrics_server()
 

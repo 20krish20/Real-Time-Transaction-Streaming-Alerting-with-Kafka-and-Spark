@@ -30,7 +30,6 @@ import requests
 
 from pipeline.config import settings
 
-
 SCHEMAS_DIR = Path(__file__).parent.parent / "schemas"
 
 # subject = topic name + "-value" (Confluent TopicNameStrategy)

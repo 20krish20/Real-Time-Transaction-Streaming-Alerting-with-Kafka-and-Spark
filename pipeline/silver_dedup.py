@@ -25,13 +25,11 @@ Why composite key (transaction_id, merchant_id) and not just transaction_id?
 
 from __future__ import annotations
 
-from typing import Any
-
 import structlog
 from delta.tables import DeltaTable
-from pyspark.sql import SparkSession, DataFrame
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
-from pyspark.sql.types import StructType, StructField, StringType, DoubleType
+from pyspark.sql.types import StringType, StructField, StructType
 
 from pipeline.config import settings
 
@@ -39,14 +37,16 @@ log = structlog.get_logger(__name__)
 
 # ── Merchant dimension (in production: loaded from a managed Delta table) ─────
 
-MERCHANT_DIM_SCHEMA = StructType([
-    StructField("merchant_id",       StringType(), False),
-    StructField("merchant_name",     StringType(), True),
-    StructField("merchant_category", StringType(), True),
-    StructField("acquiring_bank",    StringType(), True),
-    StructField("risk_tier",         StringType(), True),  # LOW / MEDIUM / HIGH
-    StructField("country_of_registration", StringType(), True),
-])
+MERCHANT_DIM_SCHEMA = StructType(
+    [
+        StructField("merchant_id", StringType(), False),
+        StructField("merchant_name", StringType(), True),
+        StructField("merchant_category", StringType(), True),
+        StructField("acquiring_bank", StringType(), True),
+        StructField("risk_tier", StringType(), True),  # LOW / MEDIUM / HIGH
+        StructField("country_of_registration", StringType(), True),
+    ]
+)
 
 # Simulated merchant dimension data
 _SAMPLE_MERCHANTS = [
@@ -94,8 +94,12 @@ def _parse_and_enrich(df: DataFrame, merchant_dim: DataFrame) -> DataFrame:
 
     return enriched.join(
         merchant_dim.select(
-            "merchant_id", "merchant_name", "merchant_category",
-            "acquiring_bank", "risk_tier", "country_of_registration",
+            "merchant_id",
+            "merchant_name",
+            "merchant_category",
+            "acquiring_bank",
+            "risk_tier",
+            "country_of_registration",
         ),
         on="merchant_id",
         how="left",
@@ -192,6 +196,7 @@ def run(spark: SparkSession) -> None:
 def main() -> None:
     """Databricks python_wheel_task entry point."""
     from pipeline.observability import configure_logging, start_metrics_server
+
     configure_logging()
     start_metrics_server()
 

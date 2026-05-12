@@ -15,15 +15,15 @@ Or via pytest:
 from __future__ import annotations
 
 import great_expectations as gx
-from great_expectations.core.batch import RuntimeBatchRequest
 from great_expectations.checkpoint import SimpleCheckpoint
+from great_expectations.core.batch import RuntimeBatchRequest
 
 SUITE_NAME = "silver_transactions_suite"
 DATASOURCE_NAME = "silver_spark_datasource"
 
 
 def build_suite(context: gx.DataContext) -> None:
-    suite = context.add_or_update_expectation_suite(expectation_suite_name=SUITE_NAME)
+    context.add_or_update_expectation_suite(expectation_suite_name=SUITE_NAME)
 
     validator = context.get_validator(
         batch_request=RuntimeBatchRequest(
@@ -45,15 +45,11 @@ def build_suite(context: gx.DataContext) -> None:
     # ── Enriched timestamp columns ──────────────────────────────────────────
     validator.expect_column_values_to_not_be_null("event_time_ts")
     validator.expect_column_values_to_not_be_null("txn_date")
-    validator.expect_column_values_to_be_between(
-        "txn_hour", min_value=0, max_value=23
-    )
+    validator.expect_column_values_to_be_between("txn_hour", min_value=0, max_value=23)
 
     # ── Amount integrity (carried from Bronze, must survive enrichment) ─────
     validator.expect_column_values_to_not_be_null("amount")
-    validator.expect_column_values_to_be_between(
-        "amount", min_value=0.01, max_value=1_000_000.0
-    )
+    validator.expect_column_values_to_be_between("amount", min_value=0.01, max_value=1_000_000.0)
 
     # ── Amount bucketing — derived column, must cover all rows ────────────
     validator.expect_column_values_to_be_in_set(
@@ -67,9 +63,7 @@ def build_suite(context: gx.DataContext) -> None:
 
     # ── Merchant enrichment — expect > 90% join hit rate (not all merchants
     #    are in the dim; new onboardings may lag by one ETL cycle) ──────────
-    validator.expect_column_values_to_not_be_null(
-        "merchant_name", mostly=0.90
-    )
+    validator.expect_column_values_to_not_be_null("merchant_name", mostly=0.90)
     validator.expect_column_values_to_be_in_set(
         "risk_tier",
         value_set=["LOW", "MEDIUM", "HIGH"],
@@ -78,9 +72,7 @@ def build_suite(context: gx.DataContext) -> None:
 
     # ── Pipeline metadata ──────────────────────────────────────────────────
     validator.expect_column_values_to_not_be_null("silver_processed_at")
-    validator.expect_column_values_to_be_in_set(
-        "pipeline_layer", value_set=["silver"]
-    )
+    validator.expect_column_values_to_be_in_set("pipeline_layer", value_set=["silver"])
     validator.expect_column_values_to_not_be_null("correlation_id")
 
     # ── No future txn_date (data sanity) ───────────────────────────────────

@@ -27,17 +27,14 @@ RBAC:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Optional
-
 import structlog
-from pyspark.sql import SparkSession, DataFrame
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from tenacity import (
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
 )
 
 from pipeline.config import settings
@@ -45,6 +42,7 @@ from pipeline.config import settings
 log = structlog.get_logger(__name__)
 
 # ── Snowflake connector options ───────────────────────────────────────────────
+
 
 def _build_sf_options(table: str) -> dict[str, str]:
     cfg = settings.snowflake
@@ -66,15 +64,17 @@ def _build_sf_options(table: str) -> dict[str, str]:
     if cfg.password:
         opts["sfPassword"] = cfg.password
     elif cfg.private_key_path:
-        opts["pem_private_key"] = _load_private_key(cfg.private_key_path, cfg.private_key_passphrase)
+        opts["pem_private_key"] = _load_private_key(
+            cfg.private_key_path, cfg.private_key_passphrase
+        )
 
     return opts
 
 
-def _load_private_key(path: str, passphrase: Optional[str]) -> str:
+def _load_private_key(path: str, passphrase: str | None) -> str:
     """Load RSA private key for Snowflake key-pair authentication."""
-    from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives import serialization
 
     with open(path, "rb") as f:
         private_key = serialization.load_pem_private_key(
@@ -90,6 +90,7 @@ def _load_private_key(path: str, passphrase: Optional[str]) -> str:
 
 
 # ── Column mapping ────────────────────────────────────────────────────────────
+
 
 def _map_reconciliation_columns(df: DataFrame) -> DataFrame:
     """
@@ -143,6 +144,7 @@ def _map_anomaly_columns(df: DataFrame) -> DataFrame:
 
 # ── Write with retry ──────────────────────────────────────────────────────────
 
+
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=4, max=30),
@@ -152,12 +154,7 @@ def _map_anomaly_columns(df: DataFrame) -> DataFrame:
 def _write_to_snowflake(df: DataFrame, table: str) -> None:
     """Write a DataFrame to Snowflake with exponential-backoff retry."""
     opts = _build_sf_options(table)
-    (
-        df.write.format("net.snowflake.spark.snowflake")
-        .options(**opts)
-        .mode("append")
-        .save()
-    )
+    (df.write.format("net.snowflake.spark.snowflake").options(**opts).mode("append").save())
     log.info("snowflake.write.success", table=table, rows=df.count())
 
 
@@ -201,7 +198,7 @@ def run(spark: SparkSession) -> None:
 
     gold_stream = (
         spark.readStream.format("delta")
-        .option("readChangeFeed", "true")      # Delta CDF — only new rows
+        .option("readChangeFeed", "true")  # Delta CDF — only new rows
         .option("startingVersion", "latest")
         .load(gold_path)
         # Filter out CDF system rows (_change_type = "update_preimage")
@@ -212,9 +209,7 @@ def run(spark: SparkSession) -> None:
     checkpoint = f"{settings.delta.checkpoint_base}/snowflake_writer"
 
     query = (
-        gold_stream.writeStream.foreachBatch(
-            lambda df, bid: _write_batch(spark, df, bid)
-        )
+        gold_stream.writeStream.foreachBatch(lambda df, bid: _write_batch(spark, df, bid))
         .option("checkpointLocation", checkpoint)
         .trigger(processingTime=f"{settings.streaming.gold_trigger_seconds} seconds")
         .queryName("snowflake-gold-writer")
@@ -228,6 +223,7 @@ def run(spark: SparkSession) -> None:
 def main() -> None:
     """Databricks python_wheel_task entry point."""
     from pipeline.observability import configure_logging, start_metrics_server
+
     configure_logging()
     start_metrics_server()
 

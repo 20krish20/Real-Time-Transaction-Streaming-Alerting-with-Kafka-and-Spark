@@ -63,10 +63,11 @@ target-version = "py39"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]
-ignore = ["E501"]  # line length handled by formatter
+ignore = ["E501", "N812"]  # E501: line length handled by formatter; N812: functions as F is PySpark convention
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]  # allow assert in tests
+"databricks/**" = ["F821", "N816"]  # spark/dbutils are Databricks runtime globals
 
 [tool.mypy]
 python_version = "3.9"

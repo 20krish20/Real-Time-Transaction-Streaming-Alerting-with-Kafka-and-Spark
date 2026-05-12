@@ -14,7 +14,6 @@ from __future__ import annotations
 
 from enum import Enum
 from functools import lru_cache
-from typing import Optional
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -37,8 +36,8 @@ class KafkaSettings(BaseSettings):
         default="http://localhost:8081",
         description="Confluent Schema Registry base URL",
     )
-    schema_registry_username: Optional[str] = None
-    schema_registry_password: Optional[str] = None
+    schema_registry_username: str | None = None
+    schema_registry_password: str | None = None
 
     # Topics
     topic_raw_transactions: str = "raw-transactions"
@@ -51,17 +50,17 @@ class KafkaSettings(BaseSettings):
     consumer_group_silver: str = "reconciliation-silver-consumer"
 
     # Producer
-    acks: str = "all"                      # idempotent requires acks=all
+    acks: str = "all"  # idempotent requires acks=all
     enable_idempotence: bool = True
     max_in_flight_requests_per_connection: int = 5
     linger_ms: int = 10
-    batch_size: int = 65536                # 64 KB
+    batch_size: int = 65536  # 64 KB
 
     # Security (Confluent Cloud / SASL_SSL)
-    security_protocol: str = "PLAINTEXT"   # override to SASL_SSL for cloud
-    sasl_mechanism: Optional[str] = None
-    sasl_username: Optional[str] = None
-    sasl_password: Optional[str] = None
+    security_protocol: str = "PLAINTEXT"  # override to SASL_SSL for cloud
+    sasl_mechanism: str | None = None
+    sasl_username: str | None = None
+    sasl_password: str | None = None
 
     @field_validator("acks")
     @classmethod
@@ -105,9 +104,9 @@ class SnowflakeSettings(BaseSettings):
 
     account: str = Field(default="", description="Snowflake account identifier")
     user: str = Field(default="", description="Service account username")
-    password: Optional[str] = None
-    private_key_path: Optional[str] = None   # for key-pair auth (preferred in prod)
-    private_key_passphrase: Optional[str] = None
+    password: str | None = None
+    private_key_path: str | None = None  # for key-pair auth (preferred in prod)
+    private_key_passphrase: str | None = None
 
     database: str = "RECONCILIATION_DB"
     schema_name: str = "GOLD"

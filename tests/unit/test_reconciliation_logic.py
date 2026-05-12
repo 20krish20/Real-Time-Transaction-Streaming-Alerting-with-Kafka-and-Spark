@@ -9,17 +9,16 @@ transformation, making tests fast and deterministic.
 from __future__ import annotations
 
 import pytest
-from pyspark.sql import SparkSession, DataFrame, Row
-from pyspark.sql import functions as F
+from pyspark.sql import DataFrame, Row, SparkSession
 
-from pipeline.gold_reconciliation import (
-    _add_reconciliation_columns,
-    AnomalySeverity,
-)
 from pipeline.bronze_ingestion import _add_validation_flags
-
+from pipeline.gold_reconciliation import (
+    AnomalySeverity,
+    _add_reconciliation_columns,
+)
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
+
 
 def _make_joined_row(
     spark: SparkSession,
@@ -62,6 +61,7 @@ def _make_joined_row(
 
 
 # ─── anomaly severity tests ────────────────────────────────────────────────────
+
 
 @pytest.mark.unit
 class TestAnomalySeverityClassification:
@@ -135,48 +135,96 @@ class TestAnomalySeverityClassification:
         now = datetime.now(timezone.utc)
         rows = [
             Row(
-                transaction_id="txn_none",    merchant_id="m1",
-                card_id="c1", customer_id="cu1",
-                transaction_amount=100.0, settlement_amount=100.0,
-                transaction_currency="USD", country="US", channel="POS",
-                card_type="VISA", txn_event_ts=now, correlation_id="corr1",
-                mcc="5411", geo_lat=None, geo_lon=None,
-                settlement_id="s1", settlement_status="APPROVED",
-                settle_event_ts=now, bank_reference=None,
-                interchange_fee=1.8, net_settlement_amount=98.2,
+                transaction_id="txn_none",
+                merchant_id="m1",
+                card_id="c1",
+                customer_id="cu1",
+                transaction_amount=100.0,
+                settlement_amount=100.0,
+                transaction_currency="USD",
+                country="US",
+                channel="POS",
+                card_type="VISA",
+                txn_event_ts=now,
+                correlation_id="corr1",
+                mcc="5411",
+                geo_lat=None,
+                geo_lon=None,
+                settlement_id="s1",
+                settlement_status="APPROVED",
+                settle_event_ts=now,
+                bank_reference=None,
+                interchange_fee=1.8,
+                net_settlement_amount=98.2,
             ),
             Row(
-                transaction_id="txn_medium",  merchant_id="m2",
-                card_id="c2", customer_id="cu2",
-                transaction_amount=100.0, settlement_amount=99.98,
-                transaction_currency="USD", country="US", channel="POS",
-                card_type="VISA", txn_event_ts=now, correlation_id="corr2",
-                mcc="5411", geo_lat=None, geo_lon=None,
-                settlement_id="s2", settlement_status="APPROVED",
-                settle_event_ts=now, bank_reference=None,
-                interchange_fee=1.8, net_settlement_amount=98.18,
+                transaction_id="txn_medium",
+                merchant_id="m2",
+                card_id="c2",
+                customer_id="cu2",
+                transaction_amount=100.0,
+                settlement_amount=99.98,
+                transaction_currency="USD",
+                country="US",
+                channel="POS",
+                card_type="VISA",
+                txn_event_ts=now,
+                correlation_id="corr2",
+                mcc="5411",
+                geo_lat=None,
+                geo_lon=None,
+                settlement_id="s2",
+                settlement_status="APPROVED",
+                settle_event_ts=now,
+                bank_reference=None,
+                interchange_fee=1.8,
+                net_settlement_amount=98.18,
             ),
             Row(
-                transaction_id="txn_high",    merchant_id="m3",
-                card_id="c3", customer_id="cu3",
-                transaction_amount=100.0, settlement_amount=97.0,
-                transaction_currency="USD", country="US", channel="POS",
-                card_type="VISA", txn_event_ts=now, correlation_id="corr3",
-                mcc="5411", geo_lat=None, geo_lon=None,
-                settlement_id="s3", settlement_status="APPROVED",
-                settle_event_ts=now, bank_reference=None,
-                interchange_fee=1.75, net_settlement_amount=95.25,
+                transaction_id="txn_high",
+                merchant_id="m3",
+                card_id="c3",
+                customer_id="cu3",
+                transaction_amount=100.0,
+                settlement_amount=97.0,
+                transaction_currency="USD",
+                country="US",
+                channel="POS",
+                card_type="VISA",
+                txn_event_ts=now,
+                correlation_id="corr3",
+                mcc="5411",
+                geo_lat=None,
+                geo_lon=None,
+                settlement_id="s3",
+                settlement_status="APPROVED",
+                settle_event_ts=now,
+                bank_reference=None,
+                interchange_fee=1.75,
+                net_settlement_amount=95.25,
             ),
             Row(
-                transaction_id="txn_critical", merchant_id="m4",
-                card_id="c4", customer_id="cu4",
-                transaction_amount=100.0, settlement_amount=100.0,
-                transaction_currency="USD", country="US", channel="POS",
-                card_type="VISA", txn_event_ts=now, correlation_id="corr4",
-                mcc="5411", geo_lat=None, geo_lon=None,
-                settlement_id="s4", settlement_status="REVERSED",
-                settle_event_ts=now, bank_reference=None,
-                interchange_fee=1.8, net_settlement_amount=98.2,
+                transaction_id="txn_critical",
+                merchant_id="m4",
+                card_id="c4",
+                customer_id="cu4",
+                transaction_amount=100.0,
+                settlement_amount=100.0,
+                transaction_currency="USD",
+                country="US",
+                channel="POS",
+                card_type="VISA",
+                txn_event_ts=now,
+                correlation_id="corr4",
+                mcc="5411",
+                geo_lat=None,
+                geo_lon=None,
+                settlement_id="s4",
+                settlement_status="REVERSED",
+                settle_event_ts=now,
+                bank_reference=None,
+                interchange_fee=1.8,
+                net_settlement_amount=98.2,
             ),
         ]
         df = spark.createDataFrame(rows)
@@ -194,35 +242,36 @@ class TestAnomalySeverityClassification:
 
 # ─── Bronze validation tests ───────────────────────────────────────────────────
 
+
 @pytest.mark.unit
 class TestBronzeValidation:
     def _make_raw_txn(self, spark: SparkSession, **overrides) -> DataFrame:
         from datetime import datetime, timezone
 
         now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
-        base = dict(
-            transaction_id="txn_valid",
-            merchant_id="merch_0001",
-            card_id="card_000001",
-            customer_id="cust_00001",
-            amount=100.0,
-            currency="USD",
-            country="US",
-            channel="POS",
-            card_type="VISA",
-            event_time=now_ms,
-            processing_time=now_ms,
-            correlation_id="corr_valid",
-            geo_lat=40.7,
-            geo_lon=-74.0,
-            mcc="5411",
-            schema_version=1,
-            raw_json='{"transaction_id":"txn_valid"}',
-            topic="raw-transactions",
-            partition=0,
-            offset=0,
-            kafka_timestamp=datetime.now(timezone.utc),
-        )
+        base = {
+            "transaction_id": "txn_valid",
+            "merchant_id": "merch_0001",
+            "card_id": "card_000001",
+            "customer_id": "cust_00001",
+            "amount": 100.0,
+            "currency": "USD",
+            "country": "US",
+            "channel": "POS",
+            "card_type": "VISA",
+            "event_time": now_ms,
+            "processing_time": now_ms,
+            "correlation_id": "corr_valid",
+            "geo_lat": 40.7,
+            "geo_lon": -74.0,
+            "mcc": "5411",
+            "schema_version": 1,
+            "raw_json": '{"transaction_id":"txn_valid"}',
+            "topic": "raw-transactions",
+            "partition": 0,
+            "offset": 0,
+            "kafka_timestamp": datetime.now(timezone.utc),
+        }
         base.update(overrides)
         return spark.createDataFrame([Row(**base)])
 
@@ -260,11 +309,9 @@ class TestBronzeValidation:
         assert result["_qc_currency_valid"] is True
 
     def test_stale_event_time_fails(self, spark: SparkSession) -> None:
-        from datetime import timedelta, timezone
+        from datetime import datetime, timedelta, timezone
 
-        stale_ms = int(
-            (datetime.now(timezone.utc) - timedelta(hours=30)).timestamp() * 1000
-        )
+        stale_ms = int((datetime.now(timezone.utc) - timedelta(hours=30)).timestamp() * 1000)
         df = self._make_raw_txn(spark, event_time=stale_ms)
         result = _add_validation_flags(df).collect()[0]
         assert result["_qc_event_time_range"] is False

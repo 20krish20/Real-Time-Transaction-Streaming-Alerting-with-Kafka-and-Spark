@@ -11,12 +11,11 @@ Fixtures:
 from __future__ import annotations
 
 import os
+from collections.abc import Generator
 from datetime import datetime, timezone
-from typing import Generator
 
 import pytest
-from pyspark.sql import SparkSession, DataFrame
-from pyspark.sql import Row
+from pyspark.sql import DataFrame, Row, SparkSession
 
 
 @pytest.fixture(scope="session")

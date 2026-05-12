@@ -22,17 +22,18 @@ This file is deployed as a Databricks job step via databricks.yml.
 
 from __future__ import annotations
 
-import json
-from datetime import datetime, timezone, timedelta
-from typing import Iterator
+from datetime import datetime, timedelta, timezone
 
 import structlog
-from pyspark.sql import SparkSession, DataFrame
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import (
-    StructType, StructField,
-    StringType, DoubleType, LongType, IntegerType,
-    FloatType,
+    DoubleType,
+    IntegerType,
+    LongType,
+    StringType,
+    StructField,
+    StructType,
 )
 
 from pipeline.config import settings
@@ -41,28 +42,37 @@ log = structlog.get_logger(__name__)
 
 # ── Spark schema for TransactionEvent (mirrors the Avro schema) ───────────────
 
-TRANSACTION_SCHEMA = StructType([
-    StructField("transaction_id",  StringType(),  False),
-    StructField("merchant_id",     StringType(),  False),
-    StructField("card_id",         StringType(),  False),
-    StructField("customer_id",     StringType(),  False),
-    StructField("amount",          DoubleType(),  False),
-    StructField("currency",        StringType(),  True),
-    StructField("country",         StringType(),  True),
-    StructField("channel",         StringType(),  True),
-    StructField("card_type",       StringType(),  True),
-    StructField("event_time",      LongType(),    False),   # epoch ms
-    StructField("processing_time", LongType(),    True),
-    StructField("correlation_id",  StringType(),  True),
-    StructField("geo_lat",         DoubleType(),  True),
-    StructField("geo_lon",         DoubleType(),  True),
-    StructField("mcc",             StringType(),  True),
-    StructField("schema_version",  IntegerType(), True),
-])
+TRANSACTION_SCHEMA = StructType(
+    [
+        StructField("transaction_id", StringType(), False),
+        StructField("merchant_id", StringType(), False),
+        StructField("card_id", StringType(), False),
+        StructField("customer_id", StringType(), False),
+        StructField("amount", DoubleType(), False),
+        StructField("currency", StringType(), True),
+        StructField("country", StringType(), True),
+        StructField("channel", StringType(), True),
+        StructField("card_type", StringType(), True),
+        StructField("event_time", LongType(), False),  # epoch ms
+        StructField("processing_time", LongType(), True),
+        StructField("correlation_id", StringType(), True),
+        StructField("geo_lat", DoubleType(), True),
+        StructField("geo_lon", DoubleType(), True),
+        StructField("mcc", StringType(), True),
+        StructField("schema_version", IntegerType(), True),
+    ]
+)
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-REQUIRED_FIELDS = ["transaction_id", "merchant_id", "card_id", "customer_id", "amount", "event_time"]
+REQUIRED_FIELDS = [
+    "transaction_id",
+    "merchant_id",
+    "card_id",
+    "customer_id",
+    "amount",
+    "event_time",
+]
 MAX_AMOUNT = 1_000_000.0
 MAX_EVENT_AGE_HOURS = 24
 VALID_CURRENCIES = {"USD", "EUR", "GBP", "CAD", "AUD", "SGD", "INR"}
@@ -139,46 +149,53 @@ def _add_validation_flags(df: DataFrame) -> DataFrame:
     min_event_ms = now_ms - int(timedelta(hours=MAX_EVENT_AGE_HOURS).total_seconds() * 1000)
     max_event_ms = now_ms + int(timedelta(hours=1).total_seconds() * 1000)  # 1h future tolerance
 
-    return df.withColumn(
-        "_qc_not_null",
-        F.col("transaction_id").isNotNull()
-        & F.col("merchant_id").isNotNull()
-        & F.col("card_id").isNotNull()
-        & F.col("customer_id").isNotNull()
-        & F.col("amount").isNotNull()
-        & F.col("event_time").isNotNull(),
-    ).withColumn(
-        "_qc_amount_range",
-        (F.col("amount") > F.lit(0.0)) & (F.col("amount") < F.lit(MAX_AMOUNT)),
-    ).withColumn(
-        "_qc_event_time_range",
-        (F.col("event_time") >= F.lit(min_event_ms))
-        & (F.col("event_time") <= F.lit(max_event_ms)),
-    ).withColumn(
-        "_qc_currency_valid",
-        F.col("currency").isin(*VALID_CURRENCIES) | F.col("currency").isNull(),
-    ).withColumn(
-        "_qc_channel_valid",
-        F.col("channel").isin(*VALID_CHANNELS) | F.col("channel").isNull(),
-    ).withColumn(
-        "_qc_pass",
-        F.col("_qc_not_null")
-        & F.col("_qc_amount_range")
-        & F.col("_qc_event_time_range")
-        & F.col("_qc_currency_valid")
-        & F.col("_qc_channel_valid"),
+    return (
+        df.withColumn(
+            "_qc_not_null",
+            F.col("transaction_id").isNotNull()
+            & F.col("merchant_id").isNotNull()
+            & F.col("card_id").isNotNull()
+            & F.col("customer_id").isNotNull()
+            & F.col("amount").isNotNull()
+            & F.col("event_time").isNotNull(),
+        )
+        .withColumn(
+            "_qc_amount_range",
+            (F.col("amount") > F.lit(0.0)) & (F.col("amount") < F.lit(MAX_AMOUNT)),
+        )
+        .withColumn(
+            "_qc_event_time_range",
+            (F.col("event_time") >= F.lit(min_event_ms))
+            & (F.col("event_time") <= F.lit(max_event_ms)),
+        )
+        .withColumn(
+            "_qc_currency_valid",
+            F.col("currency").isin(*VALID_CURRENCIES) | F.col("currency").isNull(),
+        )
+        .withColumn(
+            "_qc_channel_valid",
+            F.col("channel").isin(*VALID_CHANNELS) | F.col("channel").isNull(),
+        )
+        .withColumn(
+            "_qc_pass",
+            F.col("_qc_not_null")
+            & F.col("_qc_amount_range")
+            & F.col("_qc_event_time_range")
+            & F.col("_qc_currency_valid")
+            & F.col("_qc_channel_valid"),
+        )
     )
 
 
 def _enrich_bronze(df: DataFrame) -> DataFrame:
     """Add ingestion metadata columns to valid records."""
-    return df.withColumn(
-        "event_time_ts",
-        F.to_timestamp(F.col("event_time") / 1000),  # epoch ms → timestamp
-    ).withColumn(
-        "bronze_ingested_at", F.current_timestamp()
-    ).withColumn(
-        "pipeline_layer", F.lit("bronze")
+    return (
+        df.withColumn(
+            "event_time_ts",
+            F.to_timestamp(F.col("event_time") / 1000),  # epoch ms → timestamp
+        )
+        .withColumn("bronze_ingested_at", F.current_timestamp())
+        .withColumn("pipeline_layer", F.lit("bronze"))
     )
 
 
@@ -235,11 +252,7 @@ def _write_to_dlq(
             f'password="{settings.kafka.sasl_password}";'
         )
 
-    (
-        dlq_df.write.format("kafka")
-        .options(**dlq_opts)
-        .save()
-    )
+    (dlq_df.write.format("kafka").options(**dlq_opts).save())
 
 
 def _write_bronze_batch(
@@ -318,6 +331,7 @@ def run(spark: SparkSession) -> None:
 def main() -> None:
     """Databricks python_wheel_task entry point."""
     from pipeline.observability import configure_logging, start_metrics_server
+
     configure_logging()
     start_metrics_server()
 

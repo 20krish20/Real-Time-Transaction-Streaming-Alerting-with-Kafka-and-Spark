@@ -7,17 +7,15 @@ without touching real Kafka — they mock the producer.
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-from producer.transaction_producer import _generate_transaction
+import pytest
+
 from producer.settlement_producer import (
-    _generate_settlement,
     SettlementBuffer,
-    MISMATCH_RATE,
-    MISSING_RATE,
-    DUPLICATE_RATE,
+    _generate_settlement,
 )
+from producer.transaction_producer import _generate_transaction
 
 
 @pytest.mark.unit
@@ -25,9 +23,19 @@ class TestTransactionGenerator:
     def test_required_fields_present(self) -> None:
         txn = _generate_transaction()
         required = [
-            "transaction_id", "merchant_id", "card_id", "customer_id",
-            "amount", "currency", "country", "channel", "card_type",
-            "event_time", "processing_time", "correlation_id", "schema_version",
+            "transaction_id",
+            "merchant_id",
+            "card_id",
+            "customer_id",
+            "amount",
+            "currency",
+            "country",
+            "channel",
+            "card_type",
+            "event_time",
+            "processing_time",
+            "correlation_id",
+            "schema_version",
         ]
         for field in required:
             assert field in txn, f"Missing field: {field}"

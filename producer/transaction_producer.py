@@ -15,7 +15,6 @@ Run locally:
 
 from __future__ import annotations
 
-import json
 import random
 import time
 import uuid
@@ -40,13 +39,7 @@ CUSTOMERS = [f"cust_{i:05d}" for i in range(1, 301)]
 CARDS = [f"card_{i:06d}" for i in range(1, 1001)]
 
 COUNTRIES_WEIGHTED = (
-    ["US"] * 60
-    + ["CA"] * 10
-    + ["GB"] * 10
-    + ["IN"] * 8
-    + ["DE"] * 6
-    + ["AU"] * 4
-    + ["SG"] * 2
+    ["US"] * 60 + ["CA"] * 10 + ["GB"] * 10 + ["IN"] * 8 + ["DE"] * 6 + ["AU"] * 4 + ["SG"] * 2
 )
 
 CHANNELS = ["POS", "ONLINE", "ATM", "CONTACTLESS", "MOBILE"]
@@ -72,7 +65,7 @@ MCC_CODES = [
 # Merchant-to-lat/lon lookup (simplified)
 MERCHANT_GEO: dict[str, tuple[float, float]] = {
     f"merch_{i:04d}": (
-        round(random.uniform(25.0, 49.0), 4),   # US lat range
+        round(random.uniform(25.0, 49.0), 4),  # US lat range
         round(random.uniform(-124.0, -66.0), 4),  # US lon range
     )
     for i in range(1, 501)

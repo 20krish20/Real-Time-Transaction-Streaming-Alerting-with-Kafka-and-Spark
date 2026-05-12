@@ -60,28 +60,35 @@ def _get_connection():
         "account": cfg.account,
         "user": cfg.user,
         "warehouse": cfg.warehouse,
-        "role": "SYSADMIN",   # DDL requires SYSADMIN; RBAC requires SECURITYADMIN
+        "role": "SYSADMIN",  # DDL requires SYSADMIN; RBAC requires SECURITYADMIN
     }
 
     if cfg.password:
         conn_kwargs["password"] = cfg.password
     elif cfg.private_key_path:
-        from cryptography.hazmat.primitives.serialization import (
-            load_pem_private_key, Encoding, PrivateFormat, NoEncryption
-        )
         from cryptography.hazmat.backends import default_backend
+        from cryptography.hazmat.primitives.serialization import (
+            Encoding,
+            NoEncryption,
+            PrivateFormat,
+            load_pem_private_key,
+        )
 
         with open(cfg.private_key_path, "rb") as f:
             pk = load_pem_private_key(
                 f.read(),
-                password=cfg.private_key_passphrase.encode() if cfg.private_key_passphrase else None,
+                password=cfg.private_key_passphrase.encode()
+                if cfg.private_key_passphrase
+                else None,
                 backend=default_backend(),
             )
         conn_kwargs["private_key"] = pk.private_bytes(
             Encoding.DER, PrivateFormat.PKCS8, NoEncryption()
         )
     else:
-        print("ERROR: No authentication method configured (SNOWFLAKE__PASSWORD or SNOWFLAKE__PRIVATE_KEY_PATH)")
+        print(
+            "ERROR: No authentication method configured (SNOWFLAKE__PASSWORD or SNOWFLAKE__PRIVATE_KEY_PATH)"
+        )
         sys.exit(1)
 
     return snowflake.connector.connect(**conn_kwargs)

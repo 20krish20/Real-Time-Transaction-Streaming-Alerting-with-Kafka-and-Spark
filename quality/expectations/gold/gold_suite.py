@@ -8,15 +8,15 @@ fully reconciled and business-ready for Snowflake and downstream reports.
 from __future__ import annotations
 
 import great_expectations as gx
-from great_expectations.core.batch import RuntimeBatchRequest
 from great_expectations.checkpoint import SimpleCheckpoint
+from great_expectations.core.batch import RuntimeBatchRequest
 
 SUITE_NAME = "gold_reconciliation_suite"
 DATASOURCE_NAME = "gold_spark_datasource"
 
 
 def build_suite(context: gx.DataContext) -> None:
-    suite = context.add_or_update_expectation_suite(expectation_suite_name=SUITE_NAME)
+    context.add_or_update_expectation_suite(expectation_suite_name=SUITE_NAME)
 
     validator = context.get_validator(
         batch_request=RuntimeBatchRequest(
@@ -31,9 +31,7 @@ def build_suite(context: gx.DataContext) -> None:
     validator.expect_column_values_to_not_be_null("transaction_id")
     validator.expect_column_values_to_not_be_null("merchant_id")
     validator.expect_column_values_to_not_be_null("settlement_id")
-    validator.expect_compound_columns_to_be_unique(
-        column_list=["transaction_id", "merchant_id"]
-    )
+    validator.expect_compound_columns_to_be_unique(column_list=["transaction_id", "merchant_id"])
 
     # ── Amount integrity ───────────────────────────────────────────────────
     validator.expect_column_values_to_not_be_null("transaction_amount")
@@ -44,9 +42,7 @@ def build_suite(context: gx.DataContext) -> None:
     validator.expect_column_values_to_be_between(
         "settlement_amount", min_value=0.01, max_value=1_000_000.0
     )
-    validator.expect_column_values_to_be_between(
-        "mismatch_pct", min_value=0.0, max_value=100.0
-    )
+    validator.expect_column_values_to_be_between("mismatch_pct", min_value=0.0, max_value=100.0)
     validator.expect_column_values_to_be_between(
         "amount_delta", min_value=0.0, max_value=1_000_000.0
     )
@@ -84,9 +80,7 @@ def build_suite(context: gx.DataContext) -> None:
     )
 
     # ── Pipeline metadata ──────────────────────────────────────────────────
-    validator.expect_column_values_to_be_in_set(
-        "pipeline_layer", value_set=["gold"]
-    )
+    validator.expect_column_values_to_be_in_set("pipeline_layer", value_set=["gold"])
     validator.expect_column_values_to_not_be_null("correlation_id")
 
     validator.save_expectation_suite(discard_failed_expectations=False)

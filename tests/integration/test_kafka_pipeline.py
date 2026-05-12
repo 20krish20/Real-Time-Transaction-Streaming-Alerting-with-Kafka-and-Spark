@@ -15,12 +15,9 @@ Skipped automatically if Docker is not available.
 from __future__ import annotations
 
 import json
-import os
 import time
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import Generator
 
 import pytest
 
@@ -30,6 +27,7 @@ pytest.importorskip("confluent_kafka", reason="confluent-kafka not installed")
 
 try:
     import docker  # type: ignore[import]
+
     docker.from_env().ping()
     DOCKER_AVAILABLE = True
 except Exception:
@@ -42,6 +40,7 @@ pytestmark = pytest.mark.skipif(
 
 
 # ─── Fixtures ─────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture(scope="module")
 def kafka_container():
@@ -70,7 +69,7 @@ def admin_client(bootstrap_servers: str):
         NewTopic("dlq-transactions", num_partitions=3, replication_factor=1),
     ]
     futures = admin.create_topics(topics)
-    for topic, future in futures.items():
+    for _topic, future in futures.items():
         try:
             future.result()
         except Exception as exc:
@@ -85,11 +84,13 @@ def producer(bootstrap_servers: str, admin_client):
     """JSON producer (bypasses Schema Registry for simpler integration tests)."""
     from confluent_kafka import Producer
 
-    p = Producer({
-        "bootstrap.servers": bootstrap_servers,
-        "acks": "all",
-        "enable.idempotence": True,
-    })
+    p = Producer(
+        {
+            "bootstrap.servers": bootstrap_servers,
+            "acks": "all",
+            "enable.idempotence": True,
+        }
+    )
     yield p
     p.flush(10)
 
@@ -101,13 +102,15 @@ def consumer_factory(bootstrap_servers: str, admin_client):
 
     consumers = []
 
-    def _make_consumer(topic: str, group_id: str | None = None) -> "Consumer":
-        c = Consumer({
-            "bootstrap.servers": bootstrap_servers,
-            "group.id": group_id or f"test-consumer-{uuid.uuid4()}",
-            "auto.offset.reset": "earliest",
-            "enable.auto.commit": False,
-        })
+    def _make_consumer(topic: str, group_id: str | None = None) -> Consumer:
+        c = Consumer(
+            {
+                "bootstrap.servers": bootstrap_servers,
+                "group.id": group_id or f"test-consumer-{uuid.uuid4()}",
+                "auto.offset.reset": "earliest",
+                "enable.auto.commit": False,
+            }
+        )
         c.subscribe([topic])
         consumers.append(c)
         return c
@@ -119,6 +122,7 @@ def consumer_factory(bootstrap_servers: str, admin_client):
 
 
 # ─── Helper utilities ─────────────────────────────────────────────────────────
+
 
 def _now_ms() -> int:
     return int(datetime.now(timezone.utc).timestamp() * 1000)
@@ -147,6 +151,7 @@ def _consume_messages(consumer, count: int, timeout_seconds: float = 30.0) -> li
 
 # ─── Tests ────────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.integration
 class TestKafkaTopicCreation:
     def test_topics_exist(self, admin_client) -> None:
@@ -158,16 +163,12 @@ class TestKafkaTopicCreation:
             "reconciliation-alerts",
             "dlq-transactions",
         }
-        assert expected.issubset(topic_names), (
-            f"Missing topics: {expected - topic_names}"
-        )
+        assert expected.issubset(topic_names), f"Missing topics: {expected - topic_names}"
 
 
 @pytest.mark.integration
 class TestTransactionProduction:
-    def test_produce_and_consume_transaction(
-        self, producer, consumer_factory
-    ) -> None:
+    def test_produce_and_consume_transaction(self, producer, consumer_factory) -> None:
         consumer = consumer_factory("raw-transactions")
         now = _now_ms()
         txn = {
@@ -253,9 +254,7 @@ class TestSettlementProduction:
             "net_settlement_amount": 245.50,
             "schema_version": 1,
         }
-        _produce_json(
-            producer, "settlement-expectations", settlement["merchant_id"], settlement
-        )
+        _produce_json(producer, "settlement-expectations", settlement["merchant_id"], settlement)
         producer.flush(5)
 
         messages = _consume_messages(consumer, 1, timeout_seconds=20.0)
@@ -266,9 +265,7 @@ class TestSettlementProduction:
 
 @pytest.mark.integration
 class TestDLQRouting:
-    def test_malformed_message_does_not_crash_consumer(
-        self, producer, consumer_factory
-    ) -> None:
+    def test_malformed_message_does_not_crash_consumer(self, producer, consumer_factory) -> None:
         """
         Produce a deliberately malformed message and verify it can be read.
         The DLQ routing itself (via Spark) is tested in E2E; here we just

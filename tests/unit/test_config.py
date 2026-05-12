@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import os
 import pytest
 
-from pipeline.config import Settings, KafkaSettings, StreamingSettings
+from pipeline.config import KafkaSettings, Settings, StreamingSettings
 
 
 @pytest.mark.unit
@@ -22,7 +21,7 @@ class TestKafkaSettings:
         assert cfg.topic_dlq_transactions == "dlq-transactions"
 
     def test_invalid_acks_raises(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             KafkaSettings(acks="3")
 
     def test_valid_acks_values(self) -> None:

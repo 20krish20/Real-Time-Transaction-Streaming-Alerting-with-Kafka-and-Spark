@@ -11,11 +11,11 @@ import pytest
 import structlog
 
 from pipeline.observability import (
-    configure_logging,
-    get_logger,
+    PipelineMetrics,
     bind_correlation_id,
     clear_correlation_id,
-    PipelineMetrics,
+    configure_logging,
+    get_logger,
 )
 
 
@@ -73,10 +73,10 @@ class TestPipelineMetrics:
 
     def test_counter_increment(self) -> None:
         """Counters must accept inc() calls without raising."""
-        from prometheus_client import Counter
-        m = PipelineMetrics()
+
         # The shared singleton metrics would have already registered these names
         # so we test the module-level singleton instead
         from pipeline.observability import metrics
+
         # Just verify the attribute is a prometheus_client Counter
         assert hasattr(metrics.bronze_records_written, "inc")

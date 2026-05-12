@@ -10,40 +10,39 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import pytest
-from pyspark.sql import SparkSession, Row
+from pyspark.sql import DataFrame, Row, SparkSession
 
 from pipeline.silver_dedup import _parse_and_enrich
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _now_ms() -> int:
     return int(datetime.now(timezone.utc).timestamp() * 1000)
 
 
-def _make_bronze_rows(spark: SparkSession, overrides: list[dict]) -> "pyspark.sql.DataFrame":
+def _make_bronze_rows(spark: SparkSession, overrides: list[dict]) -> DataFrame:
     now = _now_ms()
-    base = dict(
-        transaction_id="txn_001",
-        merchant_id="merch_0001",
-        card_id="card_000001",
-        customer_id="cust_00001",
-        amount=100.0,
-        currency="USD",
-        country="US",
-        channel="POS",
-        card_type="VISA",
-        event_time=now,
-        processing_time=now,
-        correlation_id="corr_001",
-        geo_lat=40.7,
-        geo_lon=-74.0,
-        mcc="5411",
-        schema_version=1,
-        bronze_ingested_at=datetime.now(timezone.utc),
-        pipeline_layer="bronze",
-        # Silver adds these, but bronze rows won't have them
-    )
+    base = {
+        "transaction_id": "txn_001",
+        "merchant_id": "merch_0001",
+        "card_id": "card_000001",
+        "customer_id": "cust_00001",
+        "amount": 100.0,
+        "currency": "USD",
+        "country": "US",
+        "channel": "POS",
+        "card_type": "VISA",
+        "event_time": now,
+        "processing_time": now,
+        "correlation_id": "corr_001",
+        "geo_lat": 40.7,
+        "geo_lon": -74.0,
+        "mcc": "5411",
+        "schema_version": 1,
+        "bronze_ingested_at": datetime.now(timezone.utc),
+        "pipeline_layer": "bronze",
+    }
     rows = []
     for override in overrides:
         row = {**base, **override}
@@ -52,24 +51,28 @@ def _make_bronze_rows(spark: SparkSession, overrides: list[dict]) -> "pyspark.sq
 
 
 def _make_merchant_dim(spark: SparkSession):
-    from pyspark.sql.types import StructType, StructField, StringType
-    schema = StructType([
-        StructField("merchant_id",             StringType(), False),
-        StructField("merchant_name",            StringType(), True),
-        StructField("merchant_category",        StringType(), True),
-        StructField("acquiring_bank",           StringType(), True),
-        StructField("risk_tier",               StringType(), True),
-        StructField("country_of_registration", StringType(), True),
-    ])
+    from pyspark.sql.types import StringType, StructField, StructType
+
+    schema = StructType(
+        [
+            StructField("merchant_id", StringType(), False),
+            StructField("merchant_name", StringType(), True),
+            StructField("merchant_category", StringType(), True),
+            StructField("acquiring_bank", StringType(), True),
+            StructField("risk_tier", StringType(), True),
+            StructField("country_of_registration", StringType(), True),
+        ]
+    )
     rows = [
-        ("merch_0001", "Merchant One",   "RETAIL",    "Chase", "LOW",    "US"),
-        ("merch_0002", "Merchant Two",   "ECOMMERCE", "Citi",  "MEDIUM", "GB"),
-        ("merch_0003", "Merchant Three", "TRAVEL",    "BoA",   "HIGH",   "US"),
+        ("merch_0001", "Merchant One", "RETAIL", "Chase", "LOW", "US"),
+        ("merch_0002", "Merchant Two", "ECOMMERCE", "Citi", "MEDIUM", "GB"),
+        ("merch_0003", "Merchant Three", "TRAVEL", "BoA", "HIGH", "US"),
     ]
     return spark.createDataFrame(rows, schema)
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.unit
 class TestParseAndEnrich:

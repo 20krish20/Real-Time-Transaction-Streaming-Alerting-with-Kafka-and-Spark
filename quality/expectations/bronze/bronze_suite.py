@@ -19,16 +19,15 @@ Checks:
 from __future__ import annotations
 
 import great_expectations as gx
-from great_expectations.core.batch import RuntimeBatchRequest
 from great_expectations.checkpoint import SimpleCheckpoint
-
+from great_expectations.core.batch import RuntimeBatchRequest
 
 SUITE_NAME = "bronze_transactions_suite"
 DATASOURCE_NAME = "bronze_spark_datasource"
 
 
 def build_suite(context: gx.DataContext) -> None:
-    suite = context.add_or_update_expectation_suite(expectation_suite_name=SUITE_NAME)
+    context.add_or_update_expectation_suite(expectation_suite_name=SUITE_NAME)
 
     validator = context.get_validator(
         batch_request=RuntimeBatchRequest(
@@ -48,9 +47,7 @@ def build_suite(context: gx.DataContext) -> None:
 
     # ── merchant_id ────────────────────────────────────────────────────────
     validator.expect_column_values_to_not_be_null("merchant_id")
-    validator.expect_column_value_lengths_to_be_between(
-        "merchant_id", min_value=4, max_value=30
-    )
+    validator.expect_column_value_lengths_to_be_between("merchant_id", min_value=4, max_value=30)
 
     # ── amount ─────────────────────────────────────────────────────────────
     validator.expect_column_values_to_not_be_null("amount")
@@ -66,8 +63,8 @@ def build_suite(context: gx.DataContext) -> None:
     # epoch ms for 2020-01-01 and 2030-01-01 as sanity bounds
     validator.expect_column_values_to_be_between(
         "event_time",
-        min_value=1_577_836_800_000,   # 2020-01-01 00:00 UTC
-        max_value=1_893_456_000_000,   # 2030-01-01 00:00 UTC
+        min_value=1_577_836_800_000,  # 2020-01-01 00:00 UTC
+        max_value=1_893_456_000_000,  # 2030-01-01 00:00 UTC
         mostly=0.999,
     )
 
@@ -95,9 +92,7 @@ def build_suite(context: gx.DataContext) -> None:
     # ── pipeline metadata ──────────────────────────────────────────────────
     validator.expect_column_values_to_not_be_null("bronze_ingested_at")
     validator.expect_column_values_to_not_be_null("correlation_id")
-    validator.expect_column_values_to_be_in_set(
-        "pipeline_layer", value_set=["bronze"]
-    )
+    validator.expect_column_values_to_be_in_set("pipeline_layer", value_set=["bronze"])
 
     # ── Row completeness ───────────────────────────────────────────────────
     validator.expect_multicolumn_sum_to_equal(
