@@ -11,7 +11,6 @@ import pytest
 import structlog
 
 from pipeline.observability import (
-    PipelineMetrics,
     bind_correlation_id,
     clear_correlation_id,
     configure_logging,
@@ -61,7 +60,10 @@ class TestCorrelationIdPropagation:
 class TestPipelineMetrics:
     def test_metrics_instantiation(self) -> None:
         """Verify all metric fields initialise without error."""
-        m = PipelineMetrics()
+        # Use the module-level singleton — creating a second PipelineMetrics()
+        # would fail with "Duplicated timeseries in CollectorRegistry"
+        from pipeline.observability import metrics as m
+
         assert m.bronze_records_written is not None
         assert m.bronze_dlq_routed is not None
         assert m.silver_records_merged is not None
